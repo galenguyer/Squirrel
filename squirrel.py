@@ -1,4 +1,5 @@
 import os
+import json
 from os.path import join, dirname
 
 from inotify import adapters
@@ -13,6 +14,7 @@ conn_str = os.getenv("SQUIRREL_MONGO_URI")
 def main():
     client = MongoClient(conn_str)
     db = client.dump1090
+    last_now = 0
 
     i = adapters.Inotify()
 
@@ -22,16 +24,30 @@ def main():
         (_, type_names, path, filename) = event
 
         if filename == "aircraft.json" and "IN_MOVED_TO" in type_names:
-            print(
-                "PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(
-                    path, filename, type_names
-                )
-            )
             try:
                 with open("/run/dump1090-fa/aircraft.json", "r") as file:
-                    pass
+                    raw = file.read().strip()
+                    if len(raw) < 10:
+                        print("error reading, skipping")
+                    else:
+                        data = json.loads(raw)
+                        if last_now > int(data["now"]):
+                            print(
+                                "mismatch: now[{}] less than last_now[{}]".format(
+                                    data["now"], last_now
+                                )
+                            )
+                        else:
+                            item = db.aircraft.insert_one(data)
+                            last_now = int(data["now"])
+                            print(
+                                "inserted [{}] with id [{}]".format(
+                                    data["now"], item.inserted_id
+                                )
+                            )
             except:
                 print("whoops, raced")
+
 
 if __name__ == "__main__":
     main()
