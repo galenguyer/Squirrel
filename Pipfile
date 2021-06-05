@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 inotify = "*"
+dotenv = "*"
+pymongo = "*"
 
 [dev-packages]
 
