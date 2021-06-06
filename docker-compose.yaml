@@ -2,6 +2,7 @@ services:
   mongo:
     image: mongo:4.4.6-bionic
     command: mongod --bind_ip 0.0.0.0
+    hostname: squirrel
     environment:
       - "MONGO_INITDB_ROOT_USERNAME=squirrel"
       - "MONGO_INITDB_ROOT_PASSWORD=${SQUIRREL_MONGO_PASSWORD}"
