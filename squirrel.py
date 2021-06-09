@@ -17,13 +17,13 @@ db = client.dump1090
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("clienttype", help="Select the client type to run", choices=["agent"])
+    parser.add_argument("--agent", help="Run the agent instead of the CLI", action="store_true")
     args = parser.parse_args()
 
-    if args.clienttype == "agent":
+    if args.agent:
         agent()
     else:
-        print(args.clienttype)
+        print(args)
 
 
 def agent():
