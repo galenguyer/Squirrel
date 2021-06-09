@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from os.path import join, dirname
 
 from inotify import adapters
@@ -9,15 +10,15 @@ from pymongo import MongoClient
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 conn_str = os.getenv("SQUIRREL_MONGO_URI")
+client = MongoClient(conn_str)
+db = client.dump1090
 
 
-def main():
-    client = MongoClient(conn_str)
-    db = client.dump1090
+def agent():
     last_now = 0
 
     i = adapters.Inotify()
-
+    
     i.add_watch("/run/dump1090-fa/")
 
     for event in i.event_gen(yield_nones=False):
@@ -50,4 +51,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    agent()
