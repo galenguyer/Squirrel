@@ -1,9 +1,10 @@
 import os
 import json
+import time
 import argparse
 from os.path import join, dirname
 
-from inotify import adapters
+from inotify import adapters, calls
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -18,8 +19,13 @@ def agent():
     last_now = 0
 
     i = adapters.Inotify()
-    
-    i.add_watch("/run/dump1090-fa/")
+
+    while True:
+        try:
+            i.add_watch("/run/dump1090-fa/")
+        except calls.InotifyError:
+            print("/run/dump1090-fa/ not found, retrying in 1 second")
+            time.sleep(1)
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
