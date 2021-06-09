@@ -15,6 +15,17 @@ client = MongoClient(conn_str)
 db = client.dump1090
 
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("clienttype", help="Select the client type to run", choices=["agent"])
+    args = parser.parse_args()
+
+    if args.clienttype == "agent":
+        agent()
+    else:
+        print(args.clienttype)
+
+
 def agent():
     last_now = 0
 
@@ -57,4 +68,4 @@ def agent():
 
 
 if __name__ == "__main__":
-    agent()
+    main()
