@@ -3,6 +3,7 @@ import json
 import time
 import argparse
 from os.path import join, dirname
+from datetime import datetime
 
 from inotify import adapters, calls
 from dotenv import load_dotenv
@@ -12,18 +13,29 @@ dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 conn_str = os.getenv("SQUIRREL_MONGO_URI")
 client = MongoClient(conn_str)
-db = client.dump1090
+db = client["dump1090"]
+aircraft = db["aircraft"]
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", help="Run the agent instead of the CLI", action="store_true")
+    parser.add_argument(
+        "--agent", help="Run the agent instead of the CLI", action="store_true"
+    )
     args = parser.parse_args()
 
     if args.agent:
         agent()
     else:
-        print(args)
+        cli()
+
+
+def cli():
+    print("Total documents stored: {}".format(aircraft.count_documents({})))
+
+    latest = list(aircraft.aggregate([{"$sort": {"now": -1}}, {"$limit": 1}]))[0]
+    # TODO: Use local time?
+    print("Latest stored timestamp: {}".format(datetime.utcfromtimestamp(int(latest['now'])).strftime('%Y-%m-%d %H:%M:%S+00:00 (UTC)')))
 
 
 def agent():
@@ -56,7 +68,7 @@ def agent():
                                 )
                             )
                         else:
-                            item = db.aircraft.insert_one(data)
+                            item = aircraft.insert_one(data)
                             last_now = int(data["now"])
                             print(
                                 "inserted [{}] with id [{}]".format(
