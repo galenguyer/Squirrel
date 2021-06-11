@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import argparse
@@ -35,7 +36,66 @@ def cli():
 
     latest = list(aircraft.aggregate([{"$sort": {"now": -1}}, {"$limit": 1}]))[0]
     # TODO: Use local time?
-    print("Latest stored timestamp: {}".format(datetime.utcfromtimestamp(int(latest['now'])).strftime('%Y-%m-%d %H:%M:%S+00:00 (UTC)')))
+    print(
+        "Latest stored timestamp: {}".format(
+            datetime.utcfromtimestamp(int(latest["now"])).strftime(
+                "%Y-%m-%d %H:%M:%S+00:00 (UTC)"
+            )
+        )
+    )
+
+    furthest_24h()
+
+
+def furthest_24h():
+    lat = os.getenv("SQUIRREL_LAT")
+    lon = os.getenv("SQUIRREL_LON")
+    if lat is None or len(lat) < 1:
+        print("SQUIRREL_LAT is not set - exiting")
+    if lon is None or len(lon) < 1:
+        print("SQUIRREL_LON is not set - exiting")
+    if lat is None or len(lat) < 1 or lon is None or len(lon) < 1:
+        sys.exit(1)
+
+    furthest = aircraft.aggregate(
+        [
+            {"$match": {"now": {"$gt": int(time.time() - (24 * 60 * 60))}}},
+            {"$unwind": {"path": "$aircraft"}},
+            {
+                "$addFields": {
+                    "approxDist": {
+                        "$let": {
+                            "vars": {
+                                "x": {"$subtract": ["$aircraft.lat", float(lat)]},
+                                "y": {
+                                    "$multiply": [
+                                        {"$subtract": ["$aircraft.lon", float(lon)]},
+                                        {"$cos": {"$degreesToRadians": float(lon)}},
+                                    ]
+                                },
+                            },
+                            "in": {
+                                "$multiply": [
+                                    110.25,
+                                    {
+                                        "$sqrt": {
+                                            "$add": [
+                                                {"$pow": ["$$x", 2]},
+                                                {"$pow": ["$$y", 2]},
+                                            ]
+                                        }
+                                    },
+                                ]
+                            },
+                        }
+                    }
+                }
+            },
+            {"$sort": {"approxDist": -1}},
+            {"$limit": 100},
+        ]
+    )
+    print(list(furthest))
 
 
 def agent():
