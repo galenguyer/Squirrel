@@ -1,0 +1,53 @@
+furthest = flights.aggregate(
+    [
+        {
+            "$match": {
+                "now": {"$gt": 1624397892},
+                "flight": {"$exists": True},
+                "lat": {"$exists": True},
+                "lon": {"$exists": True},
+            }
+        },
+        {
+            "$addFields": {
+                "approxDist": {
+                    "$let": {
+                        "vars": {
+                            "x": {"$subtract": ["$lat", 47.80525]},
+                            "y": {
+                                "$multiply": [
+                                    {"$subtract": ["$lon", -122.48565]},
+                                    {"$cos": {"$degreesToRadians": -122.48565}},
+                                ]
+                            },
+                        },
+                        "in": {
+                            "$multiply": [
+                                69.170725,
+                                {
+                                    "$sqrt": {
+                                        "$add": [
+                                            {"$pow": ["$$x", 2]},
+                                            {"$pow": ["$$y", 2]},
+                                        ]
+                                    }
+                                },
+                            ]
+                        },
+                    }
+                }
+            }
+        },
+        {"$sort": {"approxDist": -1}},
+        {
+            "$group": {
+                "_id": "$flight",
+                "dist": {"$first": "$approxDist"},
+                "original": {"$first": "$$ROOT"},
+            }
+        },
+        {"$sort": {"dist": -1}},
+        {"$limit": 10},
+    ],
+    allowDiskUse=True,
+)

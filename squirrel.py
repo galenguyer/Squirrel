@@ -9,6 +9,10 @@ from datetime import datetime
 from inotify import adapters, calls
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from geopy import distance
+from rich import print
+from rich.console import Console
+from rich.table import Table
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -16,6 +20,7 @@ conn_str = os.getenv("SQUIRREL_MONGO_URI")
 client = MongoClient(conn_str)
 db = client["dump1090"]
 aircraft = db["aircraft"]
+flights = db["flights"]
 
 
 def main():
@@ -32,9 +37,9 @@ def main():
 
 
 def cli():
-    print("Total documents stored: {}".format(aircraft.count_documents({})))
+    print("Total documents stored: {}".format(flights.count_documents({})))
 
-    latest = list(aircraft.aggregate([{"$sort": {"now": -1}}, {"$limit": 1}]))[0]
+    latest = list(flights.aggregate([{"$sort": {"now": -1}}, {"$limit": 1}]))[0]
     # TODO: Use local time?
     print(
         "Latest stored timestamp: {}".format(
@@ -57,26 +62,32 @@ def furthest_24h():
     if lat is None or len(lat) < 1 or lon is None or len(lon) < 1:
         sys.exit(1)
 
-    furthest = aircraft.aggregate(
+    furthest = flights.aggregate(
         [
-            {"$match": {"now": {"$gt": int(time.time() - (24 * 60 * 60))}}},
-            {"$unwind": {"path": "$aircraft"}},
+            {
+                "$match": {
+                    "now": {"$gt": int(time.time() - (24 * 60 * 60))},
+                    "flight": {"$exists": True},
+                    "lat": {"$exists": True},
+                    "lon": {"$exists": True},
+                }
+            },
             {
                 "$addFields": {
                     "approxDist": {
                         "$let": {
                             "vars": {
-                                "x": {"$subtract": ["$aircraft.lat", float(lat)]},
+                                "x": {"$subtract": ["$lat", 47.80525]},
                                 "y": {
                                     "$multiply": [
-                                        {"$subtract": ["$aircraft.lon", float(lon)]},
-                                        {"$cos": {"$degreesToRadians": float(lon)}},
+                                        {"$subtract": ["$lon", -122.48565]},
+                                        {"$cos": {"$degreesToRadians": -122.48565}},
                                     ]
                                 },
                             },
                             "in": {
                                 "$multiply": [
-                                    110.25,
+                                    69.170725,
                                     {
                                         "$sqrt": {
                                             "$add": [
@@ -92,28 +103,53 @@ def furthest_24h():
                 }
             },
             {"$sort": {"approxDist": -1}},
-            {"$limit": 100},
-        ]
+            {
+                "$group": {
+                    "_id": "$flight",
+                    "dist": {"$first": "$approxDist"},
+                    "original": {"$first": "$$ROOT"},
+                }
+            },
+            {"$sort": {"dist": -1}},
+            {"$limit": 10},
+        ],
+        allowDiskUse=True,
     )
-    print(list(furthest))
+
+    console = Console()
+    table = Table(show_header=True, title="Furthest 10 Seen Flights")
+    table.add_column("Time", justify="right")
+    table.add_column("Flight")
+    table.add_column("Distance (approx)", justify="right")
+    table.add_column("Latitude", justify="right")
+    table.add_column("Longitude", justify="right")
+    table.add_column("Altitude", justify="right")
+
+    for plane in list(furthest):
+        table.add_row(
+            datetime.utcfromtimestamp(plane["original"]["now"]).strftime('%Y-%m-%d %H:%M:%S (UTC)'),
+            plane["original"]["flight"],
+            str(round(plane["dist"], 1)) + "mi",
+            str(round(plane["original"]["lat"], 5)),
+            str(round(plane["original"]["lon"], 5)),
+            str(plane["original"]["alt_baro"]) + "ft",            
+        )
+    console.print(table)
 
 
 def agent():
     last_now = 0
 
-    i = adapters.Inotify()
-
-    while True:
-        try:
-            i.add_watch("/run/dump1090-fa/")
-        except calls.InotifyError:
-            print("/run/dump1090-fa/ not found, retrying in 1 second")
-            time.sleep(1)
+    i = adapters.InotifyTree("/run/")
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
 
-        if filename == "aircraft.json" and "IN_MOVED_TO" in type_names:
+        if (
+            "dump1090-fa" in path
+            and filename == "aircraft.json"
+            and "IN_MOVED_TO" in type_names
+        ):
             try:
                 with open("/run/dump1090-fa/aircraft.json", "r") as file:
                     raw = file.read().strip()
@@ -128,15 +164,34 @@ def agent():
                                 )
                             )
                         else:
-                            item = aircraft.insert_one(data)
-                            last_now = int(data["now"])
-                            print(
-                                "inserted [{}] with id [{}]".format(
-                                    data["now"], item.inserted_id
+                            global aircraft
+                            global flights
+                            # insert raw document
+                            # item = aircraft.insert_one(data)
+                            # last_now = int(data["now"])
+                            # print(
+                            #     "inserted [{}] with id [{}]".format(
+                            #         data["now"], item.inserted_id
+                            #     )
+                            # )
+                            # insert each aircraft
+                            docs = []
+                            for _aircraft in data["aircraft"]:
+                                if ("alt_baro" not in _aircraft) and (
+                                    "lat" not in _aircraft
+                                ):
+                                    continue
+                                _aircraft["now"] = data["now"]
+                                docs.append(_aircraft)
+                            if len(docs) > 0:
+                                result = flights.insert_many(docs)
+                                print(
+                                    "inserted [{}] with ids ({})".format(
+                                        data["now"], len(result.inserted_ids)
+                                    )
                                 )
-                            )
-            except:
-                print("whoops, raced")
+            except Exception as e:
+                print("Exception caught:", e)
 
 
 if __name__ == "__main__":
