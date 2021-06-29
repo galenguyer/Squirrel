@@ -50,6 +50,89 @@ def cli():
     )
 
     furthest_24h()
+    highest()
+    fastest()
+
+def highest():
+    highest = flights.aggregate(
+        [
+            {
+                "$match": {
+                    "alt_baro": {"$exists": True},
+                    "alt_geom": {"$exists": True},
+                }
+            },
+            {"$sort": {"alt_geom": -1}},
+            {"$group": {"_id": "$hex", "original": {"$first": "$$ROOT"}}},
+            {"$sort": {"original.alt_geom": -1}},
+            {"$limit": 5},
+        ],
+        allowDiskUse=True,
+    )
+
+    console = Console()
+    table = Table(show_header=True, title="Highest 5 Seen Planes")
+    table.add_column("Time", justify="right")
+    table.add_column("Hex")
+    table.add_column("Flight")
+    table.add_column("Latitude", justify="right")
+    table.add_column("Longitude", justify="right")
+    table.add_column("Altitude", justify="right")
+    table.add_column("Speed", justify="right")
+
+    for plane in list(highest):
+        table.add_row(
+            datetime.utcfromtimestamp(plane["original"]["now"]).strftime(
+                "%Y-%m-%d %H:%M:%S (UTC)"
+            ),
+            plane["original"]["hex"],
+            plane["original"]["flight"] if "flight" in plane['original'] else "??????",
+            str(round(plane["original"]["lat"], 5)) if "lat" in plane['original'] else "??????",
+            str(round(plane["original"]["lon"], 5)) if "lon" in plane['original'] else "??????",
+            str(plane["original"]["alt_geom"]) + "ft",
+            str(plane["original"]["gs"]) + "kts" if "gs" in plane['original'] else "???kts",
+        )
+    console.print(table)
+
+def fastest():
+    fastest = flights.aggregate(
+        [
+            {
+                "$match": {
+                    "gs": {"$exists": True}
+                }
+            },
+            {"$sort": {"gs": -1}},
+            {"$group": {"_id": "$hex", "original": {"$first": "$$ROOT"}}},
+            {"$sort": {"original.gs": -1}},
+            {"$limit": 5},
+        ],
+        allowDiskUse=True,
+    )
+
+    console = Console()
+    table = Table(show_header=True, title="Fastest 5 Seen Planes")
+    table.add_column("Time", justify="right")
+    table.add_column("Hex")
+    table.add_column("Flight")
+    table.add_column("Latitude", justify="right")
+    table.add_column("Longitude", justify="right")
+    table.add_column("Altitude", justify="right")
+    table.add_column("Speed", justify="right")
+
+    for plane in list(fastest):
+        table.add_row(
+            datetime.utcfromtimestamp(plane["original"]["now"]).strftime(
+                "%Y-%m-%d %H:%M:%S (UTC)"
+            ),
+            plane["original"]["hex"],
+            plane["original"]["flight"] if "flight" in plane['original'] else "??????",
+            str(round(plane["original"]["lat"], 5)) if "lat" in plane['original'] else "??????",
+            str(round(plane["original"]["lon"], 5)) if "lon" in plane['original'] else "??????",
+            str(plane["original"]["alt_geom"]) + "ft" if "alt_geom" in plane["original"] else "?????ft",
+            str(plane["original"]["gs"]) + "kts" if "gs" in plane['original'] else "???kts",
+        )
+    console.print(table)
 
 
 def furthest_24h():
@@ -70,6 +153,7 @@ def furthest_24h():
                     "flight": {"$exists": True},
                     "lat": {"$exists": True},
                     "lon": {"$exists": True},
+                    "alt_geom": {"$exists": True}
                 }
             },
             {
@@ -117,22 +201,28 @@ def furthest_24h():
     )
 
     console = Console()
-    table = Table(show_header=True, title="Furthest 10 Seen Flights")
+    table = Table(show_header=True, title="Furthest 10 Seen Flights in 24h")
     table.add_column("Time", justify="right")
+    table.add_column("Hex")
     table.add_column("Flight")
     table.add_column("Distance (approx)", justify="right")
     table.add_column("Latitude", justify="right")
     table.add_column("Longitude", justify="right")
     table.add_column("Altitude", justify="right")
+    table.add_column("Speed", justify="right")
 
     for plane in list(furthest):
         table.add_row(
-            datetime.utcfromtimestamp(plane["original"]["now"]).strftime('%Y-%m-%d %H:%M:%S (UTC)'),
+            datetime.utcfromtimestamp(plane["original"]["now"]).strftime(
+                "%Y-%m-%d %H:%M:%S (UTC)"
+            ),
+            plane["original"]["hex"],
             plane["original"]["flight"],
             str(round(plane["dist"], 1)) + "mi",
             str(round(plane["original"]["lat"], 5)),
             str(round(plane["original"]["lon"], 5)),
-            str(plane["original"]["alt_baro"]) + "ft",            
+            str(plane["original"]["alt_geom"]) + "ft",
+            str(plane["original"]["gs"]) + "kts",
         )
     console.print(table)
 
