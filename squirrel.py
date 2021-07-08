@@ -161,11 +161,11 @@ def furthest_24h():
                     "approxDist": {
                         "$let": {
                             "vars": {
-                                "x": {"$subtract": ["$lat", 47.80525]},
+                                "x": {"$subtract": ["$lat", lat]},
                                 "y": {
                                     "$multiply": [
-                                        {"$subtract": ["$lon", -122.48565]},
-                                        {"$cos": {"$degreesToRadians": -122.48565}},
+                                        {"$subtract": ["$lon", lon]},
+                                        {"$cos": {"$degreesToRadians": lon}},
                                     ]
                                 },
                             },
